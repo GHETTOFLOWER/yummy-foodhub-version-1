@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: yummy-food-hub
+    runtime: node
+    plan: free
+    buildCommand: npm --prefix yummy-backend ci
+    startCommand: npm --prefix yummy-backend start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: yummy_food_hub

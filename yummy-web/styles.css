@@ -68,6 +68,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(217, 75, 53,
 .button-dark:hover { background: #404438; }
 .button-wide { justify-content: space-between; margin-top: 3px; width: 100%; }
 .form-message { color: var(--tomato-dark); font-size: 12px; min-height: 17px; margin: -2px 0 9px; }
+.recipe-image-preview { border: 1px solid var(--line); border-radius: 8px; height: 180px; margin: 0 0 18px; overflow: hidden; width: 100%; }
+.recipe-image-preview img { display: block; height: 100%; object-fit: cover; width: 100%; }
+.hidden { display: none !important; }
 .auth-switch { color: var(--muted); font-size: 12px; margin-top: 23px; text-align: center; }
 .text-button { background: none; border: 0; color: var(--tomato-dark); cursor: pointer; font-size: inherit; font-weight: 700; padding: 0 0 0 4px; }
 .auth-footnote { bottom: 24px; color: #a0a197; font-size: 10px; position: absolute; }
@@ -93,12 +96,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(217, 75, 53,
 .account-copy { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .account-copy strong { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-copy span { color: var(--muted); font-size: 10px; text-transform: capitalize; }
-.icon-button { align-items: center; background: none; border: 0; border-radius: 4px; color: #85877f; cursor: pointer; display: inline-flex; font-size: 17px; height: 32px; justify-content: center; width: 32px; }
+.icon-button { align-items: center; background: none; border: 0; border-radius: 4px; color: #85877f; cursor: pointer; display: inline-flex; font-size: 11px; font-weight: 700; height: 32px; justify-content: center; min-width: 82px; padding: 0 10px; }
 .icon-button:hover { background: #efeee7; color: var(--ink); }
 .workspace { margin-left: 238px; min-height: 100vh; }
 .topbar { align-items: center; background: rgba(247,245,237,.95); border-bottom: 1px solid var(--line); display: flex; height: 67px; justify-content: space-between; padding: 0 clamp(22px, 4vw, 58px); position: sticky; top: 0; z-index: 4; }
 .topbar-left { align-items: center; display: flex; gap: 13px; min-width: 0; }
-.back-button { align-items: center; background: #fffefa; border: 1px solid var(--line); border-radius: 4px; color: #55594e; cursor: pointer; display: inline-flex; flex: 0 0 34px; font-size: 19px; height: 34px; justify-content: center; line-height: 1; padding: 0; transition: background .18s, color .18s; }
+.back-button { align-items: center; background: #fffefa; border: 1px solid var(--line); border-radius: 4px; color: #55594e; cursor: pointer; display: inline-flex; font-size: 12px; font-weight: 700; height: 34px; justify-content: center; line-height: 1; padding: 0 14px; transition: background .18s, color .18s; }
 .back-button:hover:not(:disabled) { background: #edf0e5; color: #455236; }
 .back-button:disabled { color: #b9bab1; cursor: default; }
 .breadcrumbs { align-items: center; color: #9a9b92; display: flex; font-size: 11px; gap: 11px; }

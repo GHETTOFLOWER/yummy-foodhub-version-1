@@ -4,8 +4,8 @@
 // ============================================================
 // HOW TO RUN THIS FILE:
 //   1) npm install
-//   2) Edit the DB_CONFIG values below (password/port, if needed)
-//   3) node server.js
+//   2) Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, and DB_PORT as needed
+//   3) npm start
 // ============================================================
 
 const express = require('express');
@@ -15,16 +15,14 @@ const mysql = require('mysql2/promise');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
-// ---------- EDIT THESE TWO THINGS ----------
 const DB_CONFIG = {
-  host: 'localhost',
-  user: 'root',
-  password: '',              // <-- your MySQL/XAMPP password (leave blank if you never set one)
-  database: 'yummy_food_hub',
-  port: 3307
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'yummy_food_hub',
+  port: Number(process.env.DB_PORT || 3307)
 };
-const PORT = 3107;
-// --------------------------------------------
+const PORT = Number(process.env.PORT || 3107);
 
 const app = express();
 app.use(cors());              // allows local development clients to talk to this server
@@ -33,6 +31,16 @@ app.use(express.json());      // lets us read JSON sent from the app
 const pool = mysql.createPool(DB_CONFIG);
 // Sessions are process-local and expire after 12 hours; restarting Express signs users out.
 const sessions = new Map();
+
+async function ensureMenuImageColumn() {
+  try {
+    await pool.query('ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS image_url TEXT NULL');
+  } catch (err) {
+    console.warn('IMAGE COLUMN CHECK WARNING:', err.message);
+  }
+}
+
+ensureMenuImageColumn();
 
 function requireAuth(req, res, next) {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -142,7 +150,7 @@ async function setOrderLineStatus(connection, lineId, status, user) {
     }
     const lineTotal = Number(line.price) * Number(line.quantity);
     // Commission and seller earnings are booked only when this user-owned dish is approved.
-    const commission = line.seller_user_id ? Math.round(lineTotal * 0.05) : 0;
+    const commission = line.seller_user_id ? Math.round(lineTotal * 0.10) : 0;
     const sellerAmount = line.seller_user_id ? lineTotal - commission : 0;
     await connection.query(
       'UPDATE menu_items SET stock_quantity = stock_quantity - ? WHERE id = ?',
@@ -175,17 +183,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// ============================================================
-// TEST ROUTE — open http://localhost:3107/api/health to check the server.
-// ============================================================
+// TEST ROUTE  http://localhost:3107/api/health
+
 app.get('/api/health', (req, res) => {
   res.json({ message: 'Yummy Food Hub API is running' });
 });
 
-// ============================================================
-// REGISTER — create a new account
-// Send: { name, email, password }. Public signup always creates a customer.
-// ============================================================
+
 app.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -206,10 +210,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// ============================================================
-// LOGIN — send: { email, password }
-// Returns the user's info and an expiring in-memory session token.
-// ============================================================
+
 app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -238,9 +239,6 @@ app.post('/logout', requireAuth, (req, res) => {
   res.json({ message: 'Signed out' });
 });
 
-// ============================================================
-// MENU — anyone can view
-// ============================================================
 app.get('/menu', async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -258,15 +256,16 @@ app.get('/menu', async (req, res) => {
   }
 });
 
-// Customer recipes are community listings owned by the authenticated user.
+
 app.post('/recipes', requireAuth, async (req, res) => {
   const userId = req.user.id;
-  const { title, description, preparation_steps, category, price, stock_quantity, ingredients } = req.body;
+  const { title, description, preparation_steps, category, price, stock_quantity, ingredients, image_url } = req.body;
   const cleanTitle = String(title || '').trim();
   const cleanPreparationSteps = String(preparation_steps || '').trim();
   const cleanIngredients = Array.isArray(ingredients)
     ? [...new Set(ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
     : [];
+  const normalizedImageUrl = typeof image_url === 'string' ? image_url.trim() : '';
   const numericPrice = Number(price);
   const stock = Number(stock_quantity);
 
@@ -275,15 +274,18 @@ app.post('/recipes', requireAuth, async (req, res) => {
     || !Number.isInteger(stock) || stock < 0 || cleanIngredients.length === 0 || cleanIngredients.length > 40) {
     return res.status(400).json({ error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients' });
   }
+  if (normalizedImageUrl && normalizedImageUrl.length > 200000) {
+    return res.status(400).json({ error: 'Image is too large. Please choose a smaller photo.' });
+  }
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO menu_items
-       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'community', ?, ?)`,
-      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, userId, userId]
+       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, 'community', ?, ?, ?)`,
+      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, userId, userId, normalizedImageUrl || null]
     );
     for (const ingredient of cleanIngredients) {
       await connection.query(
@@ -307,12 +309,13 @@ app.post('/recipes', requireAuth, async (req, res) => {
 
 // House dishes record their staff/admin creator but deliberately have no seller payout owner.
 app.post('/staff/menu', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
-  const { title, description, preparation_steps, category, price, stock_quantity, ingredients } = req.body;
+  const { title, description, preparation_steps, category, price, stock_quantity, ingredients, image_url } = req.body;
   const cleanTitle = String(title || '').trim();
   const cleanPreparationSteps = String(preparation_steps || '').trim();
   const cleanIngredients = Array.isArray(ingredients)
     ? [...new Set(ingredients.map((ingredient) => String(ingredient).trim()).filter(Boolean))]
     : [];
+  const normalizedImageUrl = typeof image_url === 'string' ? image_url.trim() : '';
   const numericPrice = Number(price);
   const stock = Number(stock_quantity);
   if (!cleanTitle || !cleanPreparationSteps || cleanPreparationSteps.length > 4000
@@ -320,15 +323,18 @@ app.post('/staff/menu', requireAuth, requireRole('admin', 'staff'), async (req, 
     || !Number.isInteger(stock) || stock < 0 || cleanIngredients.length === 0 || cleanIngredients.length > 40) {
     return res.status(400).json({ error: 'Add a title, category, preparation steps, valid UGX price, stock quantity, and 1 to 40 ingredients' });
   }
+  if (normalizedImageUrl && normalizedImageUrl.length > 200000) {
+    return res.status(400).json({ error: 'Image is too large. Please choose a smaller photo.' });
+  }
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO menu_items
-       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'business', ?, NULL)`,
-      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, req.user.id]
+       (title, description, preparation_steps, category, price, stock_quantity, listing_type, creator_user_id, seller_user_id, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, 'business', ?, NULL, ?)`,
+      [cleanTitle, String(description || '').trim().slice(0, 500), cleanPreparationSteps, String(category).trim(), numericPrice, stock, req.user.id, normalizedImageUrl || null]
     );
     for (const ingredient of cleanIngredients) {
       await connection.query(
@@ -446,9 +452,8 @@ app.post('/order', requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================
-// MY ORDERS — order history for one customer
-// ============================================================
+// order history for one customer
+
 app.get('/orders/:userId', requireAuth, async (req, res) => {
   if (Number(req.params.userId) !== Number(req.user.id)) {
     return res.status(403).json({ error: 'You can only view your own orders' });
@@ -661,6 +666,6 @@ app.put('/orders/:id/status', requireAuth, requireRole('admin', 'staff'), async 
 // Serve the browser app from the same origin as the REST API.
 app.use(express.static(path.join(__dirname, '..', 'yummy-web')));
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://10.253.19.253:${PORT}/`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://localhost:${PORT}/`);
 });

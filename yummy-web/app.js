@@ -1,3 +1,5 @@
+const API_BASE = '';
+
 const state = {
   user: readStorage('yummy-user'),
   cart: [],
@@ -53,9 +55,10 @@ function money(value) {
 }
 
 async function api(path, options = {}) {
-  // The server-issued bearer token supplies identity and role for protected routes.
+  // Use the same origin so local and hosted frontend pages call their serving API.
   const token = readStorage('yummy-token');
-  const response = await fetch(path, {
+  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE}${path}`;
+  const response = await fetch(url, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -94,7 +97,7 @@ function updateAuthForm() {
   title.textContent = state.registering ? 'Make yourself at home.' : staffMode ? 'Welcome, team.' : 'Come on in.';
   eyebrow.textContent = state.registering ? 'A SEAT IS WAITING' : staffMode ? 'STAFF & ADMIN ACCESS' : 'WELCOME BACK';
   intro.textContent = state.registering ? 'Create an account and find your new favorite.' : staffMode ? 'Sign in with your staff account to manage menu stock.' : 'Sign in to pick up where your appetite left off.';
-  submit.innerHTML = state.registering ? 'Create account <span aria-hidden="true">↗</span>' : 'Sign in <span aria-hidden="true">↗</span>';
+  submit.textContent = state.registering ? 'Create account' : 'Sign in';
   switchCopy.textContent = state.registering ? 'Already have an account?' : 'New around here?';
   switchButton.textContent = state.registering ? 'Sign in' : 'Create an account';
   password.autocomplete = state.registering ? 'new-password' : 'current-password';
@@ -269,6 +272,8 @@ function renderMenu() {
   const cards = filtered.map((item, index) => {
     const outOfStock = Number(item.stock_quantity) <= 0;
     const image = imageChoices[index % imageChoices.length];
+    const imageUrl = item.image_url || `https://images.unsplash.com/${image}?auto=format&fit=crop&w=700&q=80`;
+    const safeImageUrl = String(imageUrl).replace(/['"]/g, '\\$&');
     const ingredients = (item.ingredients || []).map((ingredient) => {
       const quantity = ingredient.quantity_text ? `${ingredient.quantity_text} ` : '';
       return `${quantity}${ingredient.ingredient_name}`;
@@ -284,7 +289,7 @@ function renderMenu() {
       ? `<details class="food-recipe"><summary>View recipe</summary><p>${escapeHtml(item.preparation_steps)}</p></details>`
       : '';
     return `<article class="food-card">
-      <div class="food-photo" style="background-image:url('https://images.unsplash.com/${image}?auto=format&fit=crop&w=700&q=80')"><span class="food-tag">${escapeHtml(item.category || 'Fresh pick')}</span></div>
+      <div class="food-photo" style="background-image:url('${safeImageUrl}')"><span class="food-tag">${escapeHtml(item.category || 'Fresh pick')}</span></div>
       <div class="food-body"><div class="food-title-row"><h3 class="food-title">${escapeHtml(item.title)}</h3><span class="food-price">${money(item.price)}</span></div>
       <p class="food-source">${escapeHtml(source)}</p>
       <p class="food-description">${escapeHtml(item.description || 'Freshly prepared with good ingredients and a little extra care.')}</p>
@@ -415,11 +420,13 @@ function renderCreateRecipe() {
     <label class="field">Category<input name="category" maxlength="80" placeholder="Traditional, Street Food..." required></label>
     <label class="field">Price in UGX<input name="price" type="number" min="1000" step="500" placeholder="12000" required></label>
     <label class="field">Available portions<input name="stock_quantity" type="number" min="0" step="1" value="5" required></label>
+    <label class="field recipe-wide">Dish photo<input type="file" name="dish_image" accept="image/*"></label>
+    <div id="recipe-image-preview" class="recipe-image-preview hidden"></div>
     <label class="field recipe-wide">Description<textarea name="description" maxlength="500" rows="3" placeholder="Tell people what makes this dish special."></textarea></label>
     <label class="field recipe-wide">Ingredients, one per line<textarea name="ingredients" rows="5" placeholder="2 eggs&#10;1 chapati&#10;1 tomato" required></textarea></label>
     <label class="field recipe-wide">Preparation steps<textarea name="preparation_steps" rows="5" placeholder="Explain how to prepare the dish, step by step." required></textarea></label>
     <p id="recipe-message" class="form-message recipe-wide" role="alert"></p>
-    <div class="recipe-actions recipe-wide"><span>Set portions to 0 to mark the dish unavailable.</span><button class="button button-dark" type="submit">Publish dish <span aria-hidden="true">↗</span></button></div>
+    <div class="recipe-actions recipe-wide"><span>Set portions to 0 to mark the dish unavailable.</span><button class="button button-dark" type="submit">Publish dish</button></div>
   </form>`;
 }
 
@@ -452,7 +459,7 @@ function renderCart() {
   const modal = document.querySelector('#modal-root');
   const total = state.cart.reduce((sum, line) => sum + Number(line.item.price) * line.quantity, 0);
   const lines = state.cart.map((line, index) => `<div class="cart-line"><div><h3>${escapeHtml(line.item.title)}</h3><p>${money(line.item.price)} each · ${money(Number(line.item.price) * line.quantity)}</p></div><div class="quantity-control"><button data-action="quantity" data-index="${index}" data-change="-1" aria-label="Remove one">−</button><span>${line.quantity}</span><button data-action="quantity" data-index="${index}" data-change="1" aria-label="Add one">+</button></div></div>`).join('');
-  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">THE GOOD STUFF</p><h2 id="cart-title">Your bag <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close bag">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">Available orders are approved automatically. Unavailable requests go to admin review.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place order <span aria-hidden="true">↗</span></button></div>` : '<div class="cart-empty">Your bag is taking a little breather.<br>Add something lovely from the menu.</div>'}</section></div>`;
+  modal.innerHTML = `<div class="cart-overlay" data-action="overlay-close"><section class="cart-drawer" role="dialog" aria-modal="true" aria-labelledby="cart-title"><div class="drawer-head"><div><p class="eyebrow">THE GOOD STUFF</p><h2 id="cart-title">Your bag <span class="brand-muted">(${state.cart.length})</span></h2></div><button class="close-button" data-action="close-cart" aria-label="Close bag">×</button></div>${state.cart.length ? `<div class="cart-lines">${lines}</div><div class="drawer-footer"><p id="cart-error" class="drawer-message"></p><p class="order-review-note">Available orders are approved automatically. Unavailable requests go to admin review.</p><div class="total-row"><span>Order total</span><strong>${money(total)}</strong></div><button class="button button-dark" data-action="checkout">Place order</button></div>` : '<div class="cart-empty">Your bag is taking a little breather.<br>Add something lovely from the menu.</div>'}</section></div>`;
 }
 
 function closeCart() {
@@ -483,7 +490,7 @@ async function placeOrder(button) {
   } catch (requestError) {
     error.textContent = requestError.message;
     button.disabled = false;
-    button.innerHTML = 'Place order <span aria-hidden="true">↗</span>';
+    button.textContent = 'Place order';
   }
 }
 
@@ -546,6 +553,32 @@ async function updateOrderItemStatus(lineId, status, button) {
   }
 }
 
+async function readImageFile(file) {
+  if (!file) return '';
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('Please choose an image smaller than 5MB.');
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not read the selected image. Please try another photo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function previewRecipeImage(file) {
+  const preview = document.querySelector('#recipe-image-preview');
+  if (!preview || !file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    preview.innerHTML = `<img src="${String(reader.result || '')}" alt="Dish preview" />`;
+    preview.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
 async function submitRecipe(event) {
   event.preventDefault();
   const form = event.target;
@@ -558,9 +591,11 @@ async function submitRecipe(event) {
     return;
   }
   const submit = form.querySelector('button[type="submit"]');
+  const imageFile = values.get('dish_image');
   submit.disabled = true;
   message.textContent = '';
   try {
+    const imageUrl = await readImageFile(imageFile && imageFile instanceof File ? imageFile : null);
     // Only staff/admin navigation sets this flag; customer submissions always use the community endpoint.
     const isBusinessDish = state.recipeSource === 'business';
     await api(isBusinessDish ? '/staff/menu' : '/recipes', {
@@ -573,6 +608,7 @@ async function submitRecipe(event) {
         price: Number(values.get('price')),
         stock_quantity: Number(values.get('stock_quantity')),
         ingredients,
+        image_url: imageUrl,
       }),
     });
     showToast(isBusinessDish ? 'House dish added to the Hub menu' : 'Your dish is now on the community menu');
@@ -625,7 +661,7 @@ async function submitAuth(event) {
     message.textContent = error.message;
   } finally {
     submit.disabled = false;
-    submit.innerHTML = state.registering ? 'Create account <span aria-hidden="true">↗</span>' : 'Sign in <span aria-hidden="true">↗</span>';
+    submit.textContent = state.registering ? 'Create account' : 'Sign in';
   }
 }
 
@@ -653,6 +689,11 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 document.querySelector('#cart-open').addEventListener('click', renderCart);
 document.querySelector('#back-button').addEventListener('click', goBack);
 // Page content is replaced on navigation, so screen actions use stable delegated listeners.
+document.querySelector('#page-content').addEventListener('change', (event) => {
+  if (event.target && event.target.name === 'dish_image' && event.target.files && event.target.files[0]) {
+    previewRecipeImage(event.target.files[0]);
+  }
+});
 document.querySelector('#page-content').addEventListener('input', (event) => {
   if (event.target.id === 'menu-search') {
     state.search = event.target.value;
