@@ -14,7 +14,7 @@ This project is built with:
 ## Project structure
 
 ```text
-yummy-food-hub-android/
+yummy-food-hub-webapp/
 ├── README.md
 ├── yummy-backend/
 │   ├── package.json
